@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { saveTokens } from "../../../../lib/token-store";
 
 export async function GET(request) {
   const url = new URL(request.url);
@@ -46,18 +47,28 @@ export async function GET(request) {
 
   const tokenData = await tokenResponse.json().catch(() => ({}));
 
-  if (!tokenResponse.ok) {
+  if (!tokenResponse.ok || !tokenData.access_token) {
     return NextResponse.json(
       { ok: false, error: "token_exchange_failed", details: tokenData },
       { status: tokenResponse.status }
     );
   }
 
-  // Do not expose OAuth tokens in the browser response.
+  try {
+    await saveTokens(tokenData);
+  } catch (storageError) {
+    console.error("Failed to persist Mautic OAuth tokens", storageError);
+    return NextResponse.json(
+      { ok: false, error: "token_storage_failed", message: "Authorization succeeded, but the token could not be stored." },
+      { status: 500 }
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     connected: true,
-    message: "OAuth authorization succeeded. Token exchange completed securely on the server.",
+    persisted: true,
+    message: "Mautic authorization succeeded and tokens were stored securely.",
     expires_in: tokenData.expires_in ?? null,
   });
 }
