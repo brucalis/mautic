@@ -37,6 +37,30 @@ const handler = createMcpHandler((server) => {
       return { isError: true, content: [{ type: "text", text: "Unable to query Mautic" }] };
     }
   });
+  server.tool("mautic_prepare_contact", "Validate and preview a proposed new contact. Does not save or send anything.", {
+    email: z.string().email().max(254),
+    firstname: z.string().max(100).optional(),
+    lastname: z.string().max(100).optional(),
+    mobile: z.string().max(40).optional()
+  }, async ({ email, firstname, lastname, mobile }) => ({
+    content: [{ type: "text", text: JSON.stringify({
+      valid: true, dry_run: true, saved: false,
+      action: "create_contact",
+      contact: { email, firstname: firstname || "", lastname: lastname || "", mobile: mobile || "" },
+      next_step: "Ask the user to confirm before executing a separate authenticated write operation."
+    }) }]
+  }));
+  server.tool("mautic_prepare_segment", "Validate and preview a proposed segment. Does not create or change a segment.", {
+    name: z.string().trim().min(1).max(150),
+    description: z.string().max(500).optional()
+  }, async ({ name, description }) => ({
+    content: [{ type: "text", text: JSON.stringify({
+      valid: true, dry_run: true, saved: false,
+      action: "create_segment",
+      segment: { name, description: description || "" },
+      next_step: "Ask the user to confirm before executing a separate authenticated write operation."
+    }) }]
+  }));
   server.tool("mautic_connection", "Check whether Mautic OAuth and the API connection are operational. Does not return contact data.", {}, async () => {
     try {
       const token = await getValidAccessToken();
