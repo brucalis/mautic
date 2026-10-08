@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://mautic-sooty.vercel.app"
+      "url": "https://integracoes.ensinaflix.com"
     }
   ],
   "components": {
