@@ -92,7 +92,7 @@
       "post": {
         "operationId": "prepareOrCreateMauticResource",
         "summary": "Preview or explicitly create contact or segment",
-        "description": "Set confirm:false for a no-write preview. Set confirm:true only after user explicitly approves the specific operation. Never create without approval.",
+        "description": "For every request ALWAYS include payload with contact email or segment name and description. For previews use confirm:false. Only set confirm:true after explicit user approval.",
         "requestBody": {
           "required": true,
           "content": {
@@ -119,11 +119,50 @@
                   },
                   "confirm": {
                     "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "description": "Keep false for a dry run. True requires explicit approval."
                   },
                   "payload": {
                     "type": "object",
-                    "additionalProperties": true
+                    "description": "Required fields for the requested resource. Segments need name and optional description; contacts need email and optional firstname, lastname, mobile.",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Required when resource is segments."
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Segment description."
+                      },
+                      "email": {
+                        "type": "string",
+                        "format": "email",
+                        "description": "Required when resource is contacts."
+                      },
+                      "firstname": {
+                        "type": "string"
+                      },
+                      "lastname": {
+                        "type": "string"
+                      },
+                      "mobile": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "anyOf": [
+                      {
+                        "required": [
+                          "name"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "email"
+                        ]
+                      }
+                    ]
                   }
                 }
               }
