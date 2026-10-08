@@ -1,74 +1,48 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { saveTokens } from "../../../../lib/token-store";
 
 export async function GET(request) {
   const url = new URL(request.url);
-  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const expected = request.cookies.get("mautic_oauth_state")?.value;
+  const validState = state && expected && state.length === expected.length &&
+    timingSafeEqual(Buffer.from(state), Buffer.from(expected));
+  if (!validState) {
+    return NextResponse.json({ ok: false, error: "invalid_oauth_state" }, { status: 400 });
+  }
+  const respond = (body, status = 200) => {
+    const response = NextResponse.json(body, { status });
+    response.cookies.delete("mautic_oauth_state");
+    return response;
+  };
   const error = url.searchParams.get("error");
-
-  if (error) {
-    return NextResponse.json(
-      { ok: false, error, description: url.searchParams.get("error_description") },
-      { status: 400 }
-    );
-  }
-
-  if (!code) {
-    return NextResponse.json(
-      { ok: false, error: "missing_code", message: "Mautic did not return an authorization code." },
-      { status: 400 }
-    );
-  }
-
+  if (error) return respond({ ok: false, error: "authorization_denied" }, 400);
+  const code = url.searchParams.get("code");
+  if (!code) return respond({ ok: false, error: "missing_code" }, 400);
   const baseUrl = process.env.MAUTIC_BASE_URL?.replace(/\/$/, "");
   const clientId = process.env.MAUTIC_CLIENT_ID;
   const clientSecret = process.env.MAUTIC_CLIENT_SECRET;
   const redirectUri = process.env.MAUTIC_REDIRECT_URI;
-
-  if (!baseUrl || !clientId || !clientSecret || !redirectUri) {
-    return NextResponse.json(
-      { ok: false, error: "server_configuration", message: "Required Mautic environment variables are missing." },
-      { status: 500 }
-    );
-  }
-
-  const tokenResponse = await fetch(`${baseUrl}/oauth/v2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      code,
-    }),
-    cache: "no-store",
-  });
-
-  const tokenData = await tokenResponse.json().catch(() => ({}));
-
-  if (!tokenResponse.ok || !tokenData.access_token) {
-    return NextResponse.json(
-      { ok: false, error: "token_exchange_failed", details: tokenData },
-      { status: tokenResponse.status }
-    );
-  }
-
+  if (!baseUrl || !clientId || !clientSecret || !redirectUri)
+    return respond({ ok: false, error: "server_configuration" }, 500);
   try {
+    const tokenResponse = await fetch(`${baseUrl}/oauth/v2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code", client_id: clientId,
+        client_secret: clientSecret, redirect_uri: redirectUri, code
+      }),
+      cache: "no-store"
+    });
+    const tokenData = await tokenResponse.json().catch(() => ({}));
+    if (!tokenResponse.ok || !tokenData.access_token)
+      return respond({ ok: false, error: "token_exchange_failed" }, 502);
     await saveTokens(tokenData);
-  } catch (storageError) {
-    console.error("Failed to persist Mautic OAuth tokens", storageError);
-    return NextResponse.json(
-      { ok: false, error: "token_storage_failed", message: "Authorization succeeded, but the token could not be stored." },
-      { status: 500 }
-    );
+    return respond({ ok: true, connected: true, persisted: true, message: "Mautic authorization succeeded." });
+  } catch (error) {
+    console.error("Mautic authorization callback failed", error);
+    return respond({ ok: false, error: "authorization_callback_failed" }, 500);
   }
-
-  return NextResponse.json({
-    ok: true,
-    connected: true,
-    persisted: true,
-    message: "Mautic authorization succeeded and tokens were stored securely.",
-    expires_in: tokenData.expires_in ?? null,
-  });
 }
