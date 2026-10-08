@@ -17,7 +17,8 @@
         "in": "header",
         "name": "x-bridge-api-key"
       }
-    }
+    },
+    "schemas": {}
   },
   "security": [
     {
