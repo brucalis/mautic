@@ -1,25 +1,26 @@
+import { timingSafeEqual } from "node:crypto";
 import { getValidAccessToken } from "../../../../lib/token-store";
 import { NextResponse } from "next/server";
 
-const resources = {
+const resources = Object.freeze({
   contacts: "/api/contacts",
   segments: "/api/segments",
   campaigns: "/api/campaigns",
   emails: "/api/emails",
   forms: "/api/forms",
-};
+});
 
 export async function GET(request) {
-  // Never expose contact records through a publicly accessible diagnostics URL.
   const configuredKey = process.env.MAUTIC_BRIDGE_API_KEY;
-  const providedKey = request.headers.get("x-bridge-api-key");
   if (!configuredKey) {
     return NextResponse.json({ ok: false, error: "bridge_key_not_configured" }, { status: 503 });
   }
-  if (!providedKey || providedKey !== configuredKey) {
+  const providedKey = request.headers.get("x-bridge-api-key");
+  const expected = Buffer.from(configuredKey);
+  const provided = Buffer.from(providedKey || "");
+  if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-
   const url = new URL(request.url);
   const resource = url.searchParams.get("resource") || "contacts";
   if (!Object.hasOwn(resources, resource)) {
