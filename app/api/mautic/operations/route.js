@@ -22,14 +22,18 @@ export async function POST(request) {
   let body;
   try { body = await request.json(); }
   catch { return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 }); }
-  const { resource, action, payload, confirm } = body ?? {};
+  const { resource, action, confirm } = body ?? {};
+  // GPT Actions may flatten schema properties instead of nesting them in payload.
+  const payload = body?.payload ?? (resource === "segments"
+    ? { name: body?.name, description: body?.description }
+    : { email: body?.email, firstname: body?.firstname, lastname: body?.lastname, mobile: body?.mobile });
   if (!Object.hasOwn(resources, resource) || action !== "create")
     return NextResponse.json({ ok: false, error: "unsupported_operation" }, { status: 400 });
   if (!payload || typeof payload !== "object" || Array.isArray(payload))
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   // This endpoint intentionally cannot modify Mautic without an explicit confirmation flag.
   if (confirm !== true)
-    return NextResponse.json({ ok: true, dry_run: true, resource, action, message: "No data changed. Submit confirm:true to create." });
+    return NextResponse.json({ ok: true, dry_run: true, resource, action, payload: Object.fromEntries(Object.entries(payload).filter(([, value]) => typeof value === "string" || typeof value === "boolean")), message: "No data changed. Explicit user approval and confirm:true are required to create." });
   const allowed = resource === "contacts"
     ? ["firstname", "lastname", "email", "mobile", "phone", "company", "city", "country"]
     : ["name", "description", "isPublished"];
