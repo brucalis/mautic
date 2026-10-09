@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mautic ChatGPT Bridge",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Protected API for Mautic. Read-only operations and explicit confirmed writes. Never disclose API keys."
   },
   "servers": [
@@ -92,7 +92,7 @@
       "post": {
         "operationId": "prepareOrCreateMauticResource",
         "summary": "Preview or explicitly create contact or segment",
-        "description": "Send segment name and description as TOP-LEVEL JSON fields, NOT in payload. For contacts send email as a TOP-LEVEL field. For dry-run confirm:false; confirm:true ONLY after explicit user approval.",
+        "description": "REAL CREATION ONLY after explicit user authorization. To preview, use previewMauticCreation GET instead. Requires confirm:true and appropriate name or email.",
         "requestBody": {
           "required": true,
           "content": {
@@ -156,6 +156,80 @@
           },
           "400": {
             "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/mautic/preview": {
+      "get": {
+        "operationId": "previewMauticCreation",
+        "summary": "Safely preview creation of a contact or segment without changing Mautic",
+        "description": "Read-only dry run. For a segment supply resource=segments and name; for a contact resource=contacts and email. Never creates data.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "segments",
+                "contacts"
+              ]
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for segments"
+          },
+          {
+            "name": "description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for contacts"
+          },
+          {
+            "name": "firstname",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lastname",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated preview; no changes made"
+          },
+          "400": {
+            "description": "Validation error"
           },
           "401": {
             "description": "Unauthorized"
