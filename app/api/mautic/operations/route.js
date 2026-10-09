@@ -31,9 +31,6 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: "unsupported_operation" }, { status: 400 });
   if (!payload || typeof payload !== "object" || Array.isArray(payload))
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
-  // This endpoint intentionally cannot modify Mautic without an explicit confirmation flag.
-  if (confirm !== true)
-    return NextResponse.json({ ok: true, dry_run: true, resource, action, payload: Object.fromEntries(Object.entries(payload).filter(([, value]) => typeof value === "string" || typeof value === "boolean")), message: "No data changed. Explicit user approval and confirm:true are required to create." });
   const allowed = resource === "contacts"
     ? ["firstname", "lastname", "email", "mobile", "phone", "company", "city", "country"]
     : ["name", "description", "isPublished"];
@@ -44,6 +41,9 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: "valid_email_required" }, { status: 400 });
   if (resource === "segments" && (!safePayload.name || !safePayload.name.trim()))
     return NextResponse.json({ ok: false, error: "name_required" }, { status: 400 });
+  // This endpoint intentionally cannot modify Mautic without an explicit confirmation flag.
+  if (confirm !== true)
+    return NextResponse.json({ ok: true, dry_run: true, resource, action, payload: Object.fromEntries(Object.entries(safePayload).filter(([, value]) => typeof value === "string" || typeof value === "boolean")), message: "No data changed. Explicit user approval and confirm:true are required to create." });
   try {
     const baseUrl = process.env.MAUTIC_BASE_URL?.replace(/\/$/, "");
     if (!baseUrl) throw new Error("Missing Mautic URL");
