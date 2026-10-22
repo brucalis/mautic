@@ -33,8 +33,23 @@ export async function POST(request) {
       cache: "no-store"
     });
     if (!response.ok) {
-      console.error("Mautic campaign create failed", response.status);
-      return NextResponse.json({ ok: false, error: "mautic_campaign_create_failed", upstream_status: response.status }, { status: 502 });
+      let upstreamBody = null;
+      try { upstreamBody = await response.json(); } catch { /* Mautic may return HTML or an empty body. */ }
+      // Expose only validation field names and machine-readable error codes, never raw upstream text or user data.
+      const errors = upstreamBody && typeof upstreamBody === "object" ? upstreamBody.errors : null;
+      const validation_fields = errors && typeof errors === "object" && !Array.isArray(errors)
+        ? Object.keys(errors).filter((key) => /^[a-zA-Z][a-zA-Z0-9_]{0,60}$/.test(key)).slice(0, 15)
+        : [];
+      const upstream_code = typeof upstreamBody?.error?.code === "number"
+        ? upstreamBody.error.code : null;
+      console.error("Mautic campaign create rejected", { status: response.status, validation_fields, upstream_code });
+      return NextResponse.json({
+        ok: false,
+        error: "mautic_campaign_create_failed",
+        upstream_status: response.status,
+        validation_fields,
+        upstream_code
+      }, { status: 502, headers: { "Cache-Control": "no-store" } });
     }
     const data = await response.json().catch(() => ({}));
     const campaign = data.campaign ?? {};
