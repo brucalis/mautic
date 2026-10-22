@@ -33,22 +33,35 @@ export async function POST(request) {
       cache: "no-store"
     });
     if (!response.ok) {
+      const raw = await response.text().catch(() => "");
       let upstreamBody = null;
-      try { upstreamBody = await response.json(); } catch { /* Mautic may return HTML or an empty body. */ }
-      // Expose only validation field names and machine-readable error codes, never raw upstream text or user data.
-      const errors = upstreamBody && typeof upstreamBody === "object" ? upstreamBody.errors : null;
-      const validation_fields = errors && typeof errors === "object" && !Array.isArray(errors)
-        ? Object.keys(errors).filter((key) => /^[a-zA-Z][a-zA-Z0-9_]{0,60}$/.test(key)).slice(0, 15)
+      try { upstreamBody = JSON.parse(raw); } catch { /* HTML/plain-text responses are not returned to callers. */ }
+      const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+      const safeField = (value) => typeof value === "string" && /^(name|description|isPublished|publishUp|publishDown|category|campaign|form|segment|events|source|type|id)$/.test(value);
+      const errors = upstreamBody?.errors;
+      const entries = Array.isArray(errors) ? errors : isObject(errors) ? Object.entries(errors).map(([field, value]) => ({ field, value })) : [];
+      const validation_fields = [...new Set(entries.flatMap((entry) => {
+        if (!isObject(entry)) return [];
+        return [entry.field, entry.propertyPath, entry.property, entry.path, entry?.value?.field].filter(safeField);
+      }))].slice(0, 15);
+      const upstream_code = Number.isInteger(upstreamBody?.error?.code) ? upstreamBody.error.code
+        : Number.isInteger(upstreamBody?.errors?.[0]?.code) ? upstreamBody.errors[0].code : null;
+      const response_format = upstreamBody === null ? (raw.trim().startsWith("<") ? "html" : raw ? "text" : "empty")
+        : Array.isArray(upstreamBody) ? "json_array" : "json_object";
+      const response_keys = isObject(upstreamBody)
+        ? Object.keys(upstreamBody).filter((key) => /^(errors|error|message|detail|title|status|code|campaign|success)$/.test(key))
         : [];
-      const upstream_code = typeof upstreamBody?.error?.code === "number"
-        ? upstreamBody.error.code : null;
-      console.error("Mautic campaign create rejected", { status: response.status, validation_fields, upstream_code });
+      const error_shape = Array.isArray(errors) ? "array" : isObject(errors) ? "object" : typeof errors;
+      console.error("Mautic campaign create rejected", { status: response.status, response_format, response_keys, error_shape, validation_fields, upstream_code });
       return NextResponse.json({
         ok: false,
         error: "mautic_campaign_create_failed",
         upstream_status: response.status,
         validation_fields,
-        upstream_code
+        upstream_code,
+        response_format,
+        response_keys,
+        error_shape
       }, { status: 502, headers: { "Cache-Control": "no-store" } });
     }
     const data = await response.json().catch(() => ({}));
