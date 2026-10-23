@@ -69,6 +69,7 @@ export async function POST(request) {
         return vals.slice(0, 12);
       });
       const error_categories = [...new Set([...descriptions, ...detailHints].map(classify))].slice(0, 10);
+      const nested_detail_types = [...new Set(entries.flatMap((entry) => Array.isArray(entry?.details) ? entry.details.map((item) => Array.isArray(item) ? "array" : isObject(item) ? "object" : typeof item) : []))].slice(0, 8);
       // Return a strictly allowlisted diagnostic code, never unfiltered Mautic messages.
       const knownCodes = new Set(["mautic.core.error.accessdenied", "mautic.core.error.badrequest", "mautic.campaign.error.notfound"]);
       const upstream_error_codes = [...new Set(entries.map((entry) => entry?.code).filter((v) => typeof v === "string" && knownCodes.has(v)))].slice(0, 5);
@@ -94,6 +95,7 @@ export async function POST(request) {
         error_item_keys,
         error_categories,
         detail_shapes,
+        nested_detail_types,
         upstream_error_codes
       }, { status: 502, headers: { "Cache-Control": "no-store" } });
     }
