@@ -60,7 +60,19 @@ export async function POST(request) {
         if (/name/.test(msg)) return "campaign_name";
         return "unclassified";
       };
-      const error_categories = [...new Set(descriptions.map(classify))].slice(0, 10);
+      const detailHints = entries.flatMap((entry) => {
+        if (!isObject(entry)) return [];
+        const detail = entry.details;
+        const vals = typeof detail === "string" ? [detail] : Array.isArray(detail)
+          ? detail.filter((v) => typeof v === "string") : isObject(detail)
+          ? Object.keys(detail).concat(Object.values(detail).filter((v) => typeof v === "string")) : [];
+        return vals.slice(0, 12);
+      });
+      const error_categories = [...new Set([...descriptions, ...detailHints].map(classify))].slice(0, 10);
+      // Return a strictly allowlisted diagnostic code, never unfiltered Mautic messages.
+      const knownCodes = new Set(["mautic.core.error.accessdenied", "mautic.core.error.badrequest", "mautic.campaign.error.notfound"]);
+      const upstream_error_codes = [...new Set(entries.map((entry) => entry?.code).filter((v) => typeof v === "string" && knownCodes.has(v)))].slice(0, 5);
+      const detail_shapes = [...new Set(entries.map((entry) => Array.isArray(entry?.details) ? "array" : isObject(entry?.details) ? "object" : typeof entry?.details))].slice(0, 5);
       const error_item_keys = [...new Set(entries.flatMap((entry) => isObject(entry)
         ? Object.keys(entry).filter((key) => /^(message|code|type|field|propertyPath|property|path|details)$/.test(key)) : []))].slice(0, 12);
       const response_format = upstreamBody === null ? (raw.trim().startsWith("<") ? "html" : raw ? "text" : "empty")
@@ -69,7 +81,7 @@ export async function POST(request) {
         ? Object.keys(upstreamBody).filter((key) => /^(errors|error|message|detail|title|status|code|campaign|success)$/.test(key))
         : [];
       const error_shape = Array.isArray(errors) ? "array" : isObject(errors) ? "object" : typeof errors;
-      console.error("Mautic campaign create rejected", { status: response.status, response_format, response_keys, error_shape, error_item_keys, error_categories, validation_fields, upstream_code });
+      console.error("Mautic campaign create rejected", { status: response.status, response_format, response_keys, error_shape, error_item_keys, error_categories, detail_shapes, upstream_error_codes, validation_fields, upstream_code });
       return NextResponse.json({
         ok: false,
         error: "mautic_campaign_create_failed",
@@ -80,7 +92,9 @@ export async function POST(request) {
         response_keys,
         error_shape,
         error_item_keys,
-        error_categories
+        error_categories,
+        detail_shapes,
+        upstream_error_codes
       }, { status: 502, headers: { "Cache-Control": "no-store" } });
     }
     const data = await response.json().catch(() => ({}));
